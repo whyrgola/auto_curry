@@ -1,7 +1,7 @@
-# Auto Curry
-### Procedural macro for currying most functions in Rust.
-### This procedural macro can be thought of as a complete version of
-### the unfinished Rust library, `cutlass`.
+# auto_curry
+Procedural macro for currying most functions in Rust.
+This procedural macro can be thought of as a complete version of
+the unfinished Rust library, [`cutlass`](https://crates.io/crates/cutlass).
 
 ## `add` Example (*/examples/add.rs*):
 ``` rust
@@ -20,10 +20,10 @@ fn main() {
 ```
 
 ## How it expands:
-The add function in the example above expands exactly to:
+As of version 0.1.0, the add function in the example above expands exactly to:
 ``` rust
-fn add(a: i32) -> impl Fn(i32) {
-   move |b| a + b
+fn add(a: i32) -> impl Fn(i32) -> i32 {
+    move |b| { a + b }
 }
 ```
 As far as I am aware, this is the most performant expansion in stable rust.
