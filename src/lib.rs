@@ -13,7 +13,7 @@ pub fn curry(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let parsed = parse_macro_input!(item as ItemFn);
     match generate_curry(parsed) {
         Ok(gen) => gen,
-        Err(err) => panic!("{}", err),
+        Err(err) => panic!("{err}"),
     }
     .into()
 }
@@ -52,8 +52,6 @@ fn generate_curry(parsed: ItemFn) -> Result<proc_macro2::TokenStream, &'static s
         None => quote!((#first_argument)),
     };
 
-    // Since we don't care about the self receiver anymore we can
-    // filter it out
     let mut arguments = arguments
         .map(|argument| match argument {
             FnArg::Typed(typed_argument) => typed_argument,
@@ -70,9 +68,18 @@ fn generate_curry(parsed: ItemFn) -> Result<proc_macro2::TokenStream, &'static s
         .next()
         .ok_or("Cannot curry a function with only 1 argument")?;
 
-    // Any arguments after the first and second argument
+    // Any arguments after the first and second arguments
     // if there are any, will be caught here and reduced down to
     // a single quote
+    //
+    // The problem here is reducing a bunch of:
+    // `move |name|` and `Fn(SomeType)`
+    //
+    // into single:
+    // `Box::new(move |name|)` and `Box<Fn(SomeType)>`
+    //
+    // A convenient yet perhaps dangerous way to do it is via
+    // a recursive function:
     let final_arguments = {
         fn recursively_box(
             mut iterator: impl Iterator<Item = (TokenStream2, TokenStream2)>,
@@ -119,7 +126,7 @@ fn generate_curry(parsed: ItemFn) -> Result<proc_macro2::TokenStream, &'static s
     };
 
     Ok(quote! {
-        // TODO: Do we need to include the `attrs`?
+        // TODO: Do we need to include the `attrs`? (assumption: yes)
         #(#attrs)*
         #visibility fn #fn_name #generics #fn_arguments -> impl #first_type #final_type {
             #first_closure_args #final_closure
@@ -134,17 +141,39 @@ const ONLY_ONE_SELF_RECEIVER: &str = "Cannot have two or more `self` receivers";
 mod tests {
     use super::*;
 
+    fn test_curry(input: &str, output: &str) {
+        let parsed: ItemFn = syn::parse_str(input).unwrap();
+        assert_eq!(generate_curry(parsed).unwrap().to_string(), output)
+    }
+
     #[test]
     fn long_add() {
-        let parsed: ItemFn = syn::parse_str(
+        test_curry(
             "
-            pub fn add(self, a: i32, b: i32, c: i32, d: i32, e: i32) -> i32 {
-                a + b + c + d + e
-            }
-        ",
+                pub fn add(self, a: i32, b: i32, c: i32, d: i32, e: i32) -> i32 {
+                    a + b + c + d + e
+                }
+            ",
+            "pub fn add (self , a : i32) -> impl Fn (i32) -> Box < dyn Fn (i32) -> Box < dyn Fn (i32) -> Box < dyn Fn (i32) -> i32 > > > { move | b | Box :: new (move | c | Box :: new (move | d | Box :: new (move | e | { a + b + c + d + e }))) }"
         )
-        .unwrap();
-        let x = generate_curry(parsed);
-        dbg!(x.unwrap().to_string());
+    }
+
+    #[test]
+    fn with_generics() {
+        test_curry(
+            r#"
+                fn generic<T>(x: T, y: T, z: T) {
+                    println!("{x}");
+                    println!("{y}");
+                    println!("{z}");
+                }
+            "#,
+            "fn generic < T > (x : T) -> impl Fn (T) -> Box < dyn Fn (T) > { move | y | Box :: new (move | z | { println ! (\"{x}\") ; println ! (\"{y}\") ; println ! (\"{z}\") ; }) }"
+        )
+    }
+
+    //#[test]
+    fn with_gats() {
+        todo!()
     }
 }
