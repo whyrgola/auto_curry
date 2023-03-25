@@ -1,6 +1,6 @@
 [package]
 name = "auto_curry"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 description = "Procedural macro to automatically curry functions"
 readme = "README.md"
