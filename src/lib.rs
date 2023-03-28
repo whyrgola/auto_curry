@@ -1,9 +1,12 @@
 // Waiting for this:
 //#![feature(impl_trait_in_fn_trait_return)]
+// or alternatively as a workaound:
+//#![feature(type_alias_impl_trait)]
 
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
-use quote::quote;
+use proc_macro2::TokenTree;
+use quote::{quote, ToTokens};
 use syn::{parse_macro_input, FnArg, ItemFn, Signature};
 
 /// Automatically curries an `fn` function when used as an attribute,
@@ -18,8 +21,9 @@ pub fn curry(_attr: TokenStream, item: TokenStream) -> TokenStream {
     .into()
 }
 
-fn generate_curry(parsed: ItemFn) -> Result<proc_macro2::TokenStream, &'static str> {
-    let ItemFn {
+/// Generates the curried function for `curry`. Used internally for testing.
+fn generate_curry(
+    ItemFn {
         attrs,
         vis: visibility,
         sig:
@@ -31,9 +35,25 @@ fn generate_curry(parsed: ItemFn) -> Result<proc_macro2::TokenStream, &'static s
                 ..
             },
         block,
-    } = parsed;
-
+    }: ItemFn,
+) -> Result<proc_macro2::TokenStream, &'static str> {
     let mut arguments = inputs.into_iter();
+
+    // TODO: Check if it's possible to do this without cloning
+    let has_mutability = arguments.clone().any(|argument| {
+        matches!(argument, FnArg::Typed(typed_argument) if {
+            typed_argument.to_token_stream().into_iter().any(
+                |token| matches!(token, TokenTree::Ident(ident) if &ident.to_string() == "mut"),
+            )
+        })
+    });
+
+    let fn_trait: TokenStream2 = match has_mutability {
+        true => "FnMut",
+        false => "Fn",
+    }
+    .parse()
+    .expect("Failed to parse `fn_trait`, this means there is a bug in the library!");
 
     // Take care of the self receiver and the first argument
     let (receiver, first_argument) = match arguments.next().ok_or(MUST_HAVE_NON_SELF_ARGUMENT)? {
@@ -58,10 +78,12 @@ fn generate_curry(parsed: ItemFn) -> Result<proc_macro2::TokenStream, &'static s
             FnArg::Receiver(_) => unreachable!("{ONLY_ONE_SELF_RECEIVER}"),
         })
         .map(|argument| {
-            let argument_name = argument.pat;
-            let argument_type = argument.ty;
+            let (argument_name, argument_type) = (argument.pat, argument.ty);
 
-            (quote!(move |#argument_name|), quote!(Fn(#argument_type)))
+            (
+                quote!(move |#argument_name|),
+                quote!(#fn_trait (#argument_type)),
+            )
         });
 
     let (first_closure_args, first_type) = arguments
@@ -81,6 +103,7 @@ fn generate_curry(parsed: ItemFn) -> Result<proc_macro2::TokenStream, &'static s
     // A convenient yet perhaps dangerous way to do it is via
     // a recursive function:
     let final_arguments = {
+        // TODO: Try replacing this with a `reduce` on the Iterator.
         fn recursively_box(
             mut iterator: impl Iterator<Item = (TokenStream2, TokenStream2)>,
             streams: Option<(TokenStream2, TokenStream2)>,
@@ -134,7 +157,7 @@ fn generate_curry(parsed: ItemFn) -> Result<proc_macro2::TokenStream, &'static s
     })
 }
 
-const MUST_HAVE_NON_SELF_ARGUMENT: &str = "Must have atleast one non `self` argument to curry";
+const MUST_HAVE_NON_SELF_ARGUMENT: &str = "Must have atleast two non `self` argument to curry";
 const ONLY_ONE_SELF_RECEIVER: &str = "Cannot have two or more `self` receivers";
 
 #[cfg(test)]
@@ -169,6 +192,18 @@ mod tests {
                 }
             "#,
             "fn generic < T > (x : T) -> impl Fn (T) -> Box < dyn Fn (T) > { move | y | Box :: new (move | z | { println ! (\"{x}\") ; println ! (\"{y}\") ; println ! (\"{z}\") ; }) }"
+        )
+    }
+
+    #[test]
+    fn with_fake_mut() {
+        test_curry(
+            r#"
+                fn fake_mut(r#mut: i8, b: i32) {
+                    println!("{} {}", r#mut, b);
+                }
+            "#,
+            "fn fake_mut (r#mut : i8) -> impl Fn (i32) { move | b | { println ! (\"{} {}\" , r#mut , b) ; } }",
         )
     }
 

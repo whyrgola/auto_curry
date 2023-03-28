@@ -3,7 +3,7 @@ Procedural macro for currying most functions in Rust.
 This procedural macro can be thought of as a complete version of
 the unfinished Rust library, [`cutlass`](https://crates.io/crates/cutlass).
 
-## `add` Example (*/examples/add.rs*):
+## `add` Example (/examples/add.rs):
 ``` rust
 use auto_curry::curry;
 
@@ -34,5 +34,5 @@ As far as I am aware, this is the most performant expansion in stable rust.
 3. Works on stable.
 
 ## Known issues:
-- waiting on `impl_trait_in_fn_trait_return` to be able to significantly
+- waiting on `impl_trait_in_fn_trait_return` (or alternatively, `type_alias_impl_trait`) to be able to significantly
 optimize curried functions.
