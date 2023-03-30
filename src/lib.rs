@@ -7,6 +7,9 @@ use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use proc_macro2::TokenTree;
 use quote::{quote, ToTokens};
+//use syn::visit::{self, Visit};
+use syn::ReturnType;
+use syn::Type;
 use syn::{parse_macro_input, FnArg, ItemFn, Signature};
 
 /// Automatically curries an `fn` function when used as an attribute,
@@ -39,6 +42,15 @@ fn generate_curry(
 ) -> Result<proc_macro2::TokenStream, &'static str> {
     let mut arguments = inputs.into_iter();
 
+    if let ReturnType::Type(_, ref return_type) = output {
+        if matches!(**return_type, Type::ImplTrait(_)) {
+            return Err(
+                "Cannot have an `impl Trait` return type in a curried function \
+                        try a `Box<dyn Trait>` as an alternative",
+            );
+        }
+    }
+
     // TODO: Check if it's possible to do this without cloning
     let has_mutability = arguments.clone().any(|argument| {
         matches!(argument, FnArg::Typed(typed_argument) if {
@@ -48,12 +60,10 @@ fn generate_curry(
         })
     });
 
-    let fn_trait: TokenStream2 = match has_mutability {
-        true => "FnMut",
-        false => "Fn",
-    }
-    .parse()
-    .expect("Failed to parse `fn_trait`, this means there is a bug in the library!");
+    let fn_trait = match has_mutability {
+        true => quote!(FnMut),
+        false => quote!(Fn),
+    };
 
     // Take care of the self receiver and the first argument
     let (receiver, first_argument) = match arguments.next().ok_or(MUST_HAVE_NON_SELF_ARGUMENT)? {
@@ -130,8 +140,25 @@ fn generate_curry(
             }
         }
 
+        //Fn(SomeType), Fn(OtherType), Output
+        //Fn(SomeType) -> Fn(OtherType) -> Output
+        //
+        // then iter: when you see an `Fn` (or `FnMut`),
+        // put a `Box<` up front and an `>` on the back,
+        // which might be done like this:
+        //
+        // | quote!(#left Box<#right>)
+        //
+        // repeatedly until all `Fn` or `FnMut` items are gon.
+        //
+        //Box<Fn(SomeType) -> Box<Fn(OtherType) -> Output>>
+
         let mut dyn_arguments = arguments
             .map(|(closure_args, argument_type)| (closure_args, quote!(dyn #argument_type)));
+
+        //let boxed_arguments = dyn_arguments
+        //    .clone()
+        //    .fold("", |acc, (closure_args, argument_type)| format!("{acc} "));
 
         let first_elem = dyn_arguments.next();
         let get_final_additions = || (quote!(#block), quote!(#output));
@@ -159,6 +186,15 @@ fn generate_curry(
 
 const MUST_HAVE_NON_SELF_ARGUMENT: &str = "Must have atleast two non `self` argument to curry";
 const ONLY_ONE_SELF_RECEIVER: &str = "Cannot have two or more `self` receivers";
+
+/*
+struct FnBoxingVisitor;
+
+// TODO: Visit the type for Fn's and the code for fns
+impl<'ast> Visit<'ast> for FnBoxingVisitor {
+    fn typ
+}
+*/
 
 #[cfg(test)]
 mod tests {
@@ -208,7 +244,7 @@ mod tests {
     }
 
     //#[test]
-    fn with_gats() {
-        todo!()
-    }
+    //fn with_gats() {
+    //    todo!()
+    //}
 }

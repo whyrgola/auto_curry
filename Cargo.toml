@@ -1,6 +1,6 @@
 [package]
 name = "auto_curry"
-version = "0.1.1"
+version = "1.0.0"
 edition = "2021"
 description = "Procedural macro to automatically curry functions"
 readme = "README.md"
@@ -14,4 +14,4 @@ proc-macro = true
 itertools = "0.10.5"
 proc-macro2 = "1.0.50"
 quote = "1.0.23"
-syn = { version = "1.0.107", features = ["full", "extra-traits"] }
+syn = { version = "1.0.107", features = ["visit", "full", "extra-traits"] }
