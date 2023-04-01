@@ -36,3 +36,8 @@ As far as I am aware, this is the most performant expansion in stable rust.
 ## Known issues:
 - waiting on `impl_trait_in_fn_trait_return` (or alternatively, `type_alias_impl_trait`) to be able to significantly
 optimize curried functions.
+- cannot curry pure function signatures without bodies, like those seen in traits
+- somewhat clunky code for Boxing series of `Fn`'s
+- limited number of tests and examples
+
+The last 3 known issues are ones that will be resolved as development of the library progresses.
